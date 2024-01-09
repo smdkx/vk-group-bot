@@ -1,4 +1,4 @@
-/* by Sergey Ushakov 2023 */
+/* by Sergey Ushakov 2024 */
 
 //Подключение модулей и библиотек
 const { VK, Keyboard } = require('vk-io')
@@ -279,7 +279,7 @@ hearCommand('info', async (context) => {
 Пользователь: ${context.senderId}
 Версия бота: ${config.version_bot}
 Версия API: ${config.version_api}
-Состояние DB: Connected successfully to server`)
+Статус DB: Connected successfully to server`)
 });
 	
 
@@ -411,22 +411,27 @@ hearCommand('admin', async (context) => {
 
 hearCommand('adminka', async (context) => {
 	const user = await collection.findOne({ vk_id: context.senderId })
+	const user_ids = await vk.api.users.get({
+		user_ids: context.senderId
+	});
+
 	if(user) {
 		if(user.banned === 1) return context.send(listMessage.banned)
 	}
 	else return context.send(listMessage.data);
 
-	const user_name = await vk.api.users.get({
-		user_ids: context.senderId
-	});
-
-	let rand = Math.floor(Math.random() * 100) + 1; //Рандом id сообщения от 1 до 100
-	await vk.api.messages.send({
-		user_id: 214477552, //кому придет сообщение
-		random_id: rand, //присвоение рандомного идентификатора сообщению
-		message: `Пользователь ${user_name[0].first_name} ${user_name[0].last_name} (@id${context.senderId}) запросил админку.`
-	});
-	context.send('Админка была запрошена.');
+	if(user.admin === 1) {
+		return context.send('Админка уже имеется, нет нужды запрашивать ее повторно.');
+	}
+	else {
+		let rand = Math.floor(Math.random() * 100) + 1; //Рандом id сообщения от 1 до 100
+		await vk.api.messages.send({
+			user_id: 214477552, //кому придет сообщение от сообщества
+			random_id: rand, //присвоение рандомного идентификатора сообщению
+			message: `Пользователь ${user_ids[0].first_name} ${user_ids[0].last_name} (@id${context.senderId}) запросил админку.`
+		});
+		context.send('Админка была запрошена.');
+	}
 });
 
 //=========DEBUG=========
