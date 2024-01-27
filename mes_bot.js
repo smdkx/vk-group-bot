@@ -1,18 +1,18 @@
-/* by Sergey Ushakov 2024 */
+/* by Sergey Ushakov 2024 | https://github.com/smdkx */
 
 //Подключение модулей и библиотек
+require('dotenv').config()
 const { VK, Keyboard } = require('vk-io')
 const { HearManager } = require('@vk-io/hear')
 const { MongoClient } = require('mongodb');
-const config = require('./config.json') 
 
 //Токен сообщества
 const vk = new VK({
-    token: config.token_group
+    token: process.env.TOKEN_GROUP
 })
 
 // MongoDB Settings
-const url = config.mongodb;
+const url = process.env.MONGODB;
 const client = new MongoClient(url);
 
 client.connect()
@@ -277,8 +277,8 @@ hearCommand('info', async (context) => {
 	await context.send(`Debug info:
 
 Пользователь: ${context.senderId}
-Версия бота: ${config.version_bot}
-Версия API: ${config.version_api}
+Версия бота: ${process.env.VERSION_BOT}
+Версия API: ${process.env.VERSION_API}
 Статус DB: Connected successfully to server`)
 });
 	
@@ -451,5 +451,5 @@ message.onFallback(async (context) => {
 });
 
 //Logi
-console.log('>_ Started! Script: ' + config.version_bot + ' | API: ' + config.version_api);
+console.log('>_ Started! Script: ' + process.env.VERSION_BOT + ' | API: ' + process.env.VERSION_API);
 vk.updates.start().catch(console.error);

@@ -1,12 +1,12 @@
-/* By Sergey Ushakov 2024 */
+/* by Sergey Ushakov 2024 | https://github.com/smdkx */
 
 //Подключение модулей и библиотек
+require('dotenv').config()
 const { VK } = require('vk-io')
-const config = require('./config.json') 
 
 //Токен пользователя
 const vk = new VK({
-	token: config.token_user
+	token: process.env.TOKEN_USER
 });
 
 //Цитаты для бота
@@ -297,14 +297,14 @@ async function run() {
 
 	if(currentNumber === 666 || currentNumber === 777 || currentNumber === 69 || currentNumber === 228) {
 		await api({
-			owner_id: config.group_id, //основная группа
+			owner_id: process.env.GROUP_ID, //основная группа
 			from_group: 1, //публикация от имени сообщества
 			message: generateSmiles + generateStatus + '\n\nЗапомните этот легендарный день! Все дедлайны выполнены и наконец выпал редчайший бочонок #' + currentNumber + ' (невозможная редкость Immortal Arcana)' + '\n\n«' + generateText + '»'
 		});
 	}
 
 	else await api({
-		owner_id: config.group_id, //основная группа, тест группа -202784674
+		owner_id: process.env.GROUP_ID, //основная группа, тест группа -202784674
 		from_group: 1, //публикация от имени сообщества
 		message: generateSmiles + generateStatus + '\n\nПродолжаем надеяться на лучшее (скоро дедлайн)\nДо Дня Победы осталось ' + daysLeft + ' дн.! &#127895;\nСегодня выпал бочонок #' + currentNumber + '\n\n«' + generateText + '»'
 	});
@@ -315,5 +315,5 @@ async function run() {
 run().catch(console.log);
 
 //Logi
-console.log('>_ Started! Script: ' + config.version_bot + ' | API: ' + config.version_api);
+console.log('>_ Started! Script: ' + process.env.VERSION_BOT + ' | API: ' + process.env.VERSION_API);
 vk.updates.start().catch(console.error);
