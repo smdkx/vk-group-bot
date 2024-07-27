@@ -445,8 +445,7 @@ hearCommand('start_bot', async (context) => {
 		if(user.admin === 1)
 		{
 			context.send('Генерация выполнена, запись в сообществе создана.');
-			childProcess.fork('/home/e/exojwqr1/exojwqr1.beget.tech/public_html/group_bot.js');
-			//childProcess.fork('./group_bot.js');
+			childProcess.fork('./group_bot.js');
 		}
 		else return context.send(listMessage.access);
 	}
