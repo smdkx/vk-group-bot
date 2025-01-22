@@ -1,10 +1,11 @@
-/* by Sergey Ushakov 2024 | https://github.com/smdkx */
+/* by Sergey Ushakov 2025 | https://github.com/smdkx */
 
 //Подключение модулей и библиотек
 require('dotenv').config()
 const { VK, Keyboard } = require('vk-io')
 const { HearManager } = require('@vk-io/hear')
 const { MongoClient } = require('mongodb');
+const winston = require('winston');
 
 //Токен сообщества
 const vk = new VK({
@@ -16,16 +17,32 @@ const url = process.env.MONGODB;
 const client = new MongoClient(url);
 
 client.connect()
-const dbName = 'bot'
+const dbName = 'vk_bot'
 const db = client.db(dbName)
 const collection = db.collection('users')
+
+//Process
+let childProcess = require('child_process');
+
+//Logger
+const logger = winston.createLogger({
+	level: 'info',
+	format: winston.format.json(),
+	transports: [
+	  new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+	  new winston.transports.File({ filename: 'logs/combined.log' })
+	]
+});
 
 //Список ошибок
 const listMessage = {
 	access: 'У тебя нет прав на выполнение данной команды.',
 	banned: 'Доступ к использованию данной функции был ограничен.',
 	data: 'Возникла ошибка на сервере. Введи команду /home для обновления информации.',
-	input: 'Такой команды не существует. Введи /help для просмотра доступных команд.'
+	input: 'Такой команды не существует. Введи /help для просмотра доступных команд.',
+	admin: 'Пользователь является администратором, действие недоступно.',
+	number: 'ID пользователя должен быть числовым.',
+	found: 'Такого пользователя не существует.'
 }
 
 //Хвалебный текст
@@ -85,8 +102,18 @@ const praiseText = [
 	'Я удивляюсь, как у тебя получается работать под давлением, ты словно кухонный блендер: чем больше давишь, тем лучше результат.'
 ]
 
+//Обновление юзера
+async function updateUserData(userId) {
+	logger.info(`User ${userId} update data`);
+	await collection.insertOne({
+		vk_id: userId, //vk_id
+		admin: 0, //adminka
+		banned: 0 //ban
+	})
+}
+
 //Переменная для отправки сообщений (HearManager)
-const message = new HearManager()
+const hearManager = new HearManager()
 
 vk.updates.on('message_new', (context, next) => {
 	const { messagePayload } = context;
@@ -98,9 +125,8 @@ vk.updates.on('message_new', (context, next) => {
 	return next();
 });
 
-vk.updates.on('message_new', message.middleware);
+vk.updates.on('message_new', hearManager.middleware);
 
-//Оболочка команд
 const hearCommand = (name, conditions, handle) => {
 	if (typeof handle !== 'function') {
 		handle = conditions;
@@ -111,7 +137,7 @@ const hearCommand = (name, conditions, handle) => {
 		conditions = [conditions];
 	}
 
-	message.hear(
+	hearManager.hear(
 		[
 			(text, { state }) => (
 				state.command === name
@@ -122,30 +148,26 @@ const hearCommand = (name, conditions, handle) => {
 	);
 };
 
-//Главная кнопочная форма
-message.hear(/Начать|Start/i, (context, next) => {
+hearManager.hear(/Начать|Start/i, async (context, next) => {
+	logger.info(`User ${context.senderId} started the bot`);
 	context.state.command = 'home';
 
 	return Promise.all([
-		context.send('Привет! Выбери одну из интересующих команд.'),
+		await context.send('👋 Привет! Выбери одну из интересующих команд.'),
 
 		next()
 	]);
 });
 
+//========= Started =========
 hearCommand('home', async (context) => {
-
-	//Запись юзера в DataBase
+	logger.info(`User ${context.senderId} update the info`);
 	const user = await collection.findOne({ vk_id: context.senderId })
+
 	if(!user) {
-		await collection.insertOne({
-			vk_id: context.senderId,
-			admin: 0,
-			banned: 0
-		})
+		updateUserData(context.senderId)
 	}
-	else if(user.banned === 1) return context.send(listMessage.banned)
-	
+		
 	await context.send({
 	message: 'Информация обновлена, данные с сервера получены.',
 	keyboard: Keyboard.builder()
@@ -157,6 +179,10 @@ hearCommand('home', async (context) => {
 			color: Keyboard.POSITIVE_COLOR
 		})
 		.row()
+		.urlButton({
+            label: 'FORT VPN',
+            url: 'https://t.me/fort_vpn_bot'
+        })
 		.applicationButton({
 			label: 'SKT Go',
 			appId: 7469712,
@@ -172,19 +198,19 @@ hearCommand('home', async (context) => {
 			color: Keyboard.PRIMARY_COLOR
 		})
 		.textButton({
+			label: 'Панель управления',
+			payload: {
+				command: 'control_panel'
+			},
+			color: Keyboard.NEGATIVE_COLOR
+		})
+		.row()
+		.textButton({
 			label: 'Панель «Разное»',
 			payload: {
 				command: 'other_panel'
 			},
 			color: Keyboard.PRIMARY_COLOR
-		})
-		.row()
-		.textButton({
-			label: 'Панель управления',
-			payload: {
-				command: 'bot_panel'
-			},
-			color: Keyboard.NEGATIVE_COLOR
 		})
 		.textButton({
 			label: 'Служебная информация',
@@ -196,12 +222,181 @@ hearCommand('home', async (context) => {
 	});
 });
 
-hearCommand('other_panel', async (context) => {
+hearCommand('vpn', async (context) => {
+	logger.info(`User ${context.senderId} use command /vpn`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
+
+	await context.send('Рекомендуем быстрый и надежный VPN с бесплатным пробным периодом — FORT VPN: @fort_vpn_bot')
+});
+
+hearCommand('help', async (context) => {
+	logger.info(`User ${context.senderId} use command /help`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	await context.send(`Доступные команды:
+
+/home — главная страница (upd. данных)
+/vpn — информация о VPN
+/id — узнать свой ID профиля ВКонтакте
+/captcha — получить капчу (fake)
+/bolgarka — получить картинку «Распили меня болгаркой»
+/dengi — получить картинку «За деньги да»
+/praise — похвалить себя 
+/start_bot — запустить бота и создать запись (нужны права админа)
+/start_piar — запустить рассылку (нужны права админа)
+/info — информация о боте (debug)
+/time — текущее время сервера
+/admin_status — узнать текущий статус админа
+/admin_help — команды администратора
+/admin_request — запросить права администратора
+	
+Внимание! В случае обновления бота или возникновения проблемы работы с ним следует нажать на кнопку «Обновить информацию» (аналог команды /home). Бот получит актуальную информацию с сервера.
+
+В иных случаях стоит нажать на кнопку «Служебная информация» —> «Debug info» и предоставить данные разработчику — @gray.`)
+});
+
+//========= Control Panel =========
+hearCommand('control_panel', async (context) => {
+	logger.info(`User ${context.senderId} go to Control Panel`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	await context.send({
+		message: 'Панель управления.',
+		keyboard: Keyboard.builder()
+		.textButton({
+			label: 'Вернуться на главную',
+			payload: {
+				command: 'home'
+			},
+			color: Keyboard.PRIMARY_COLOR
+		})
+		.row()
+		.textButton({
+			label: 'Узнать статус админа',
+			payload: {
+				command: 'admin_status'
+			},
+			color: Keyboard.SECONDARY_COLOR
+		})
+		.textButton({
+			label: 'Запросить админку',
+			payload: {
+				command: 'admin_request'
+			},
+			color: Keyboard.SECONDARY_COLOR
+		})
+		.row()
+		.textButton({
+			label: 'Сгенерировать запись',
+			payload: {
+				command: 'start_bot'
+			},
+			color: Keyboard.NEGATIVE_COLOR
+		})
+		.textButton({
+			label: 'Запустить рассылку',
+			payload: {
+				command: 'start_piar'
+			},
+			color: Keyboard.NEGATIVE_COLOR
+		})
+	});
+});
+
+hearCommand('admin_status', async (context) => {
+	logger.info(`User ${context.senderId} use command /admin_status`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+	
+	if(user) {
+		if(user.admin === 1) return await context.send('Текущий статус админа: имеется.');
+		else return await context.send('Текущий статус админа: отсутствует.');
+	}
+});
+
+hearCommand('admin_request', async (context) => {
+	logger.info(`User ${context.senderId} use command /admin_request`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const user_ids = await vk.api.users.get({
+		user_ids: context.senderId
+	});
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	if(user.admin === 1) {
+		return await context.send('Админка уже имеется, нет нужды запрашивать ее повторно.');
+	}
+	else {
+		let rand = Math.floor(Math.random() * 100) + 1; //Рандом id сообщения от 1 до 100
+		await vk.api.messages.send({
+			user_id: 214477552, //кому придет сообщение от сообщества
+			random_id: rand, //присвоение рандомного идентификатора сообщению
+			message: `Пользователь ${user_ids[0].first_name} ${user_ids[0].last_name} (@id${context.senderId}) запросил админку.`
+		});
+		await context.send('Админка была запрошена.');
+	}
+});
+
+hearCommand('start_bot', async (context) => {
+	logger.info(`User ${context.senderId} use command /start_bot`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	if(user.admin === 1)
+	{
+		context.send('Временно недоступно')
+		context.send('Генерация выполнена, запись в сообществе создана.');
+		childProcess.fork('./group_bot.js');
+	}
+	else return await context.send(listMessage.access);
+});
+
+hearCommand('start_piar', async (context) => {
+	logger.info(`User ${context.senderId} use command /start_piar`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	if(user.admin === 1)
+	{
+		//context.send('Временно недоступно')
+		context.send('Запущена рассылка, это займет некоторое время.');
+		childProcess.fork('./piar_bot.js');
+	}
+	else return await context.send(listMessage.access);
+});
+
+//========= Panel Other =========
+hearCommand('other_panel', async (context) => {
+	logger.info(`User ${context.senderId} go to the Other Panel`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
 
 	await context.send({
 		message: 'Панель «Разное».',
@@ -212,6 +407,14 @@ hearCommand('other_panel', async (context) => {
 				command: 'home'
 			},
 			color: Keyboard.PRIMARY_COLOR
+		})
+		.row()
+		.textButton({
+			label: 'Похвалить себя',
+			payload: {
+				command: 'praise'
+			},
+			color: Keyboard.POSITIVE_COLOR
 		})
 		.row()
 		.textButton({
@@ -243,66 +446,103 @@ hearCommand('other_panel', async (context) => {
 			},
 			color: Keyboard.SECONDARY_COLOR
 		})
-		.row()
+	});
+});
+
+hearCommand('praise', async (context) => {
+	logger.info(`User ${context.senderId} use command /praise`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	const generateText = praiseText[Math.floor(Math.random() * praiseText.length)];
+
+	await context.send({
+		message: generateText,
+		keyboard: Keyboard.builder()
 		.textButton({
-			label: 'Похвалить себя',
+			label: 'Похвалить ещё',
 			payload: {
 				command: 'praise'
 			},
-			color: Keyboard.POSITIVE_COLOR
+			color: Keyboard.SECONDARY_COLOR
 		})
+		.inline()
 	});
 });
 
-hearCommand('bot_panel', async (context) => {
+hearCommand('id', async (context) => {
+	logger.info(`User ${context.senderId} use command /id`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
 
-	await context.send({
-		message: 'Панель управления.',
-		keyboard: Keyboard.builder()
-		.textButton({
-			label: 'Вернуться на главную',
-			payload: {
-				command: 'home'
-			},
-			color: Keyboard.PRIMARY_COLOR
-		})
-		.row()
-		.textButton({
-			label: 'Узнать статус админа',
-			payload: {
-				command: 'admin'
-			},
-			color: Keyboard.SECONDARY_COLOR
-		})
-		.textButton({
-			label: 'Запросить админку',
-			payload: {
-				command: 'adminka'
-			},
-			color: Keyboard.SECONDARY_COLOR
-		})
-		.row()
-		.textButton({
-			label: 'Сгенерировать запись',
-			payload: {
-				command: 'start_bot'
-			},
-			color: Keyboard.NEGATIVE_COLOR
-		})
-	});
+	await context.send(`Твой ID ВКонтакте - ${context.senderId}`)
 });
 
+hearCommand('captcha', async (context) => {
+	logger.info(`User ${context.senderId} use command /captcha`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	await Promise.all([
+		await context.send('Отправляю капчу..'),
+
+		await context.sendPhotos({
+			value: 'https://www.checkmarket.com/wp-content/uploads/2019/12/survey-captcha-example.png' //фото капчи
+		})
+	]);
+});
+``
+hearCommand('bolgarka', async (context) => {
+	logger.info(`User ${context.senderId} use command /bolgarka`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	await Promise.all([
+		await context.send('Отправляю картинку..'),
+
+		await context.sendPhotos({
+			value: 'https://sun9-75.userapi.com/impg/FT6fkms9eUpRDAPVPyT9MC3P7WGsUSQujNM1Ag/Lfyfv10cEAI.jpg?size=1080x1070&quality=95&sign=92f1a3e9fcbfdd728d17f453ad5b6341&type=album' //фото кота с болгаркой
+		})
+	]);
+});
+
+hearCommand('dengi', async (context) => {
+	logger.info(`User ${context.senderId} use command /dengi`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+
+	await Promise.all([
+		await context.send('Отправляю картинку..'),
+
+		await context.sendPhotos({
+			value: 'https://sun9-3.userapi.com/impg/l44_mwiqa5VQRrsXlpniOWKmNaDAuI1AzIIP-w/poMwUkrGGds.jpg?size=1280x1280&quality=96&sign=cb0dfca52a710e6f88fe374e5cbd0640&type=album' //фото кота за деньги да
+		})
+	]);
+});
+
+//========= Debug Panel =========
 hearCommand('debug_panel', async (context) => {
+	logger.info(`User ${context.senderId} go to Debug Panel`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
 
 	await context.send({
 		message: 'Служебная информация.',
@@ -332,210 +572,207 @@ hearCommand('debug_panel', async (context) => {
 	});
 });
 
-hearCommand('info', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	await context.send(`Debug info:
-
-Пользователь: ${context.senderId}
-Версия бота: ${process.env.VERSION_BOT}
-Версия API: ${process.env.VERSION_API}
-Статус DB: Connected successfully to server`)
-});
-	
-
-hearCommand('help', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	context.send(`Доступные команды:
-
-/home — главная страница (upd. данных)
-/id — узнать свой ID профиля ВКонтакте
-/captcha — получить капчу (fake)
-/bolgarka — получить картинку «Распили меня болгаркой»
-/dengi — получить картинку «За деньги да»
-/praise — похвалить себя 
-/start_bot — запустить бота и создать запись (нужны права админа)
-/info — информация о боте (debug)
-/time — текущее время сервера
-/adminka — запросить админку
-/admin — узнать текущий статус админа
-	
-Внимание! В случае обновления бота или возникновения проблемы работы с ним следует нажать на кнопку «Обновить информацию» (аналог команды /home). Бот получит актуальную информацию с сервера.
-
-В иных случаях стоит нажать на кнопку «Служебная информация» -> «Debug info» и предоставить данные разработчику.`)
-});
-
-hearCommand('id', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	context.send(`Твой ID ВКонтакте - ${context.senderId}`)
-});
-
-hearCommand('captcha', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	await Promise.all([
-		context.send('Отправляю капчу..'),
-
-		context.sendPhotos({
-			value: 'https://www.checkmarket.com/wp-content/uploads/2019/12/survey-captcha-example.png' //фото капчи
-		})
-	]);
-});
-``
-hearCommand('bolgarka', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	await Promise.all([
-		context.send('Отправляю картинку..'),
-
-		context.sendPhotos({
-			value: 'https://sun9-75.userapi.com/impg/FT6fkms9eUpRDAPVPyT9MC3P7WGsUSQujNM1Ag/Lfyfv10cEAI.jpg?size=1080x1070&quality=95&sign=92f1a3e9fcbfdd728d17f453ad5b6341&type=album' //фото кота с болгаркой
-		})
-	]);
-});
-
-hearCommand('dengi', async (context) => {
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	await Promise.all([
-		context.send('Отправляю картинку..'),
-
-		context.sendPhotos({
-			value: 'https://sun9-3.userapi.com/impg/l44_mwiqa5VQRrsXlpniOWKmNaDAuI1AzIIP-w/poMwUkrGGds.jpg?size=1280x1280&quality=96&sign=cb0dfca52a710e6f88fe374e5cbd0640&type=album' //фото кота за деньги да
-		})
-	]);
-});
-
-hearCommand('start_bot', async (context) => {
-	let childProcess = require('child_process');
-
-	const user = await collection.findOne({ vk_id: context.senderId })
-	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
-	}
-	else return context.send(listMessage.data);
-
-	if(user) {
-		if(user.admin === 1)
-		{
-			context.send('Генерация выполнена, запись в сообществе создана.');
-			childProcess.fork('./group_bot.js');
-		}
-		else return context.send(listMessage.access);
-	}
-});
-
 hearCommand('time', async (context) => {
+	logger.info(`User ${context.senderId} use command /time`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
 
 	await context.send('Текущее время на сервере: ' + String(new Date()));
 });
 
-hearCommand('praise', async (context) => {
+hearCommand('info', async (context) => {
+	logger.info(`User ${context.senderId} use command /info`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
 
-	const generateText = praiseText[Math.floor(Math.random() * praiseText.length)];
-
-	await context.send({
-		message: generateText,
-		keyboard: Keyboard.builder()
-		.textButton({
-			label: 'Похвалить ещё',
-			payload: {
-				command: 'praise'
-			},
-			color: Keyboard.SECONDARY_COLOR
-		})
-		.inline()
-	});
+	await context.send(`Debug info:\n\nПользователь: ${context.senderId}\nВерсия бота: ${process.env.VERSION_BOT}\nВерсия API: ${process.env.VERSION_API}\nСтатус DB: Connected successfully to server`)
 });
 
-
-hearCommand('admin', async (context) => {
+//========= Admins Commands =========
+hearCommand('admin_help', async (context) => {
+	logger.info(`User ${context.senderId} use command /admin_help`);
 	const user = await collection.findOne({ vk_id: context.senderId })
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
+	else return await context.send(listMessage.data);
+
+	if(user) {
+		if(user.admin === 1)
+		{
+			context.send(`Доступные команды для администраторов:\n\n/status — узнать статус пользователя\n/ban — забанить пользователя\n/unban — разбанить пользователя\n/delete — удалить пользователя из базы данных\n/makeadmin — назначить администратором\n/resetadmin — аннулировать права администратора`);
+		}
+		else return await context.send(listMessage.access);
+	}
+});
+
+hearManager.hear(/^(?:\/status)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /status`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
 	
-	if(user) {
-		if(user.admin === 1) return context.send('Текущий статус админа: имеется.');
-		else return context.send('Текущий статус админа: отсутствует.');
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /status [ID пользователя]') 
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		const status_user = await collection.findOne({ vk_id: parseInt(param1) })
+		//await context.send(status_user)
+		await context.send('Временно недоступно.')
 	}
+	else return await context.send(listMessage.access);
 });
 
-hearCommand('adminka', async (context) => {
+hearManager.hear(/^(?:\/ban)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /ban`);
 	const user = await collection.findOne({ vk_id: context.senderId })
-	const user_ids = await vk.api.users.get({
-		user_ids: context.senderId
-	});
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
 
 	if(user) {
-		if(user.banned === 1) return context.send(listMessage.banned)
+		if(user.banned === 1) return await context.send(listMessage.banned)
 	}
-	else return context.send(listMessage.data);
-
-	if(user.admin === 1) {
-		return context.send('Админка уже имеется, нет нужды запрашивать ее повторно.');
+	else return await context.send(listMessage.data);
+	
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /ban [ID пользователя]')
+		if(!param_user === user) return await context.send('Невозможно заблокировать самого себя.')
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		if(param_user.banned === 1) return await context.send('Пользователь уже заблокирован.')
+		if(param_user.admin === 1) return await context.send(listMessage.admin)
+		await collection.updateOne({vk_id: parseInt(param1)}, {$set: {banned: 1}})
+		await context.send(`Пользователь @id${param1} был заблокирован.`)
 	}
-	else {
-		let rand = Math.floor(Math.random() * 100) + 1; //Рандом id сообщения от 1 до 100
-		await vk.api.messages.send({
-			user_id: 214477552, //кому придет сообщение от сообщества
-			random_id: rand, //присвоение рандомного идентификатора сообщению
-			message: `Пользователь ${user_ids[0].first_name} ${user_ids[0].last_name} (@id${context.senderId}) запросил админку.`
-		});
-		context.send('Админка была запрошена.');
-	}
+	else return await context.send(listMessage.access);
 });
 
-//=========DEBUG=========
+hearManager.hear(/^(?:\/unban)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /unban`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+	
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /unban [ID пользователя]') 
+		if(!param_user === user) return await context.send('Невозможно разбанить самого себя.')
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		if(param_user.banned === 0) return await context.send('Пользователь не заблокирован.')
+		if(param_user.admin === 1) return await context.send(listMessage.admin)
+		await collection.updateOne({vk_id: parseInt(param1)}, {$set: {banned: 0}})
+		await context.send(`Пользователь @id${param1} был разбанен.`)
+	}
+	else return await context.send(listMessage.access);
+});
+
+hearManager.hear(/^(?:\/makeadmin)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /makeadmin`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+	
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /makeadmin [ID пользователя]') 
+		if(!param_user === user) return await context.send('Невозможно выдать права администратора самому себе.')
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		if(param_user.admin === 1) return await context.send(listMessage.admin)
+		await collection.updateOne({vk_id: parseInt(param1)}, {$set: {admin: 1}})
+		await context.send(`Пользователю @id${param1} были выданы права администратора.`)
+	}
+	else return await context.send(listMessage.access);
+});
+
+hearManager.hear(/^(?:\/resetadmin)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /resetadmin`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+	
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /resetadmin [ID пользователя]') 
+		if(!param_user === user) return await context.send('Невозможно аннулировать права администратора самому себе.')
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		if(param_user.admin === 0) return await context.send('Пользователь не является администратором.')
+		await collection.updateOne({vk_id: parseInt(param1)}, {$set: {admin: 0}})
+		await context.send(`Пользователю @id${param1} были аннулированы права администратора.`)
+	}
+	else return await context.send(listMessage.access);
+});
+
+hearManager.hear(/^(?:\/delete)(?:\s+(.+)|$)/i, async (context) => {
+	logger.info(`User ${context.senderId} use command /delete`);
+	const user = await collection.findOne({ vk_id: context.senderId })
+	const [param1] = context.text.split(' ').slice(1)
+	const param_user = await collection.findOne({ vk_id: parseInt(param1) })
+
+	if(user) {
+		if(user.banned === 1) return await context.send(listMessage.banned)
+	}
+	else return await context.send(listMessage.data);
+	
+	if(user.admin === 1)
+	{
+		if(!param1) return await context.send('Введи: /delete [ID пользователя]') 
+		if(!param_user === user) return await context.send('Невозможно удалить самого себя.')
+		if(!Number(param1)) return await context.send(listMessage.number)
+		if(!param_user) return await context.send(listMessage.found)
+		if(param_user.admin === 1) return await context.send(listMessage.admin)
+		await collection.deleteOne({vk_id: parseInt(param1)})
+		await context.send(`Пользователь @id${param1} был удален из базы данных.`)
+	}
+	else return await context.send(listMessage.access);
+});
+
+//========= DEBUG COMMAND =========
 hearCommand('debug_admin1', async (context) => {
+	logger.info(`User ${context.senderId} use command /debug_admin1`);
 	await collection.updateOne({vk_id: context.senderId}, {$set: {admin: 1}})
-	context.send('Админка была выдана')
+	context.send('Админка была выдана.')
 });
 
 hearCommand('debug_admin0', async (context) => {
+	logger.info(`User ${context.senderId} use command /debug_admin0`);
 	await collection.updateOne({ vk_id: context.senderId }, { $set: { admin: 0 } } )
-	context.send('Админка аннулирована')
+	context.send('Админка аннулирована.')
 });
-//==================
+//=========
 
-message.onFallback(async (context) => {
+hearManager.onFallback(async (context) => {
+	logger.info(`User ${context.senderId} write ${context.text}`);
 	await context.send(listMessage.input);
 });
 

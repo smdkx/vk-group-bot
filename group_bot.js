@@ -283,15 +283,18 @@ const generateSmiles = currentSmiles[Math.floor(Math.random() * currentSmiles.le
 
 //Счетчик до определенной даты
 const currentDate = new Date().getFullYear();
-const yearDate = new Date(`31 October ${currentDate} 00:00:00`); //currentDate + 1
+const yearDate = new Date(`23 February ${currentDate} 00:00:00`); //currentDate + 1
 const todayDate = Date.now();
 const difference = yearDate - todayDate;
 const daysLeft = Math.floor(difference / (1000 * 60 * 60 * 24));
 
 //Название праздника
-const currentHoliday = "Хэллоуина"
+const currentHoliday = "Дня защитника Отечества"
 
-//
+//Эмодзи
+const currentEmoji = "&#129686;" //Каска
+
+//Генератор чисел
 function generateValue(min = 10, max = 999) {
     return Math.ceil(Math.random() * (max - min) + min); //диапазон от 10 до 999;
 }
@@ -312,7 +315,7 @@ async function run() {
 	else await api({
 		owner_id: process.env.GROUP_ID, //основная группа, тест группа -202784674
 		from_group: 1, //публикация от имени сообщества
-		message: generateSmiles + generateStatus + '\n\nПродолжаем надеяться на лучшее (скоро дедлайн)\nДо '+ currentHoliday +' осталось ' + daysLeft + ' дн.! &#127875;\nСегодня выпал бочонок #' + currentNumber + '\n\n«' + generateText + '»'
+		message: generateSmiles + generateStatus + '\n\nПродолжаем надеяться на лучшее (скоро дедлайн)\nДо '+ currentHoliday +' осталось ' + daysLeft + ' дн.! '+ currentEmoji +'\nСегодня выпал бочонок #' + currentNumber + '\n\n«' + generateText + '»'
 	});
 
 	console.log(api);
