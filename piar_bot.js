@@ -31,30 +31,51 @@ const delay = (time) => {
 
 async function run() {
 
-	const api = vk.api.wall.post
-	const delayTimer = 10000 //10 секунд
+    const api = vk.api.wall.post;
+    const delayTimer = 25000; //25 секунд
+    let currentNumber = 0;
+	let isReset = false; //restart
 
-	async function launchGroup() {
-		delay(delayTimer)
-		.then(async () => {
-		const currentNumber = 0
-		await api({
-			owner_id: groupID[0], 
-			message: currentText,
-			attachments: attach
-		});
-		console.log('>_ Опубликовано в сообществе «' + groupName[currentNumber] + '» (' + groupID[currentNumber] + ')')
-		return delay(delayTimer)
-	})
-	.then(() => {
-		console.log('>_ DONE! Wait 10 minutes before restarting')
-		setTimeout(() => {
-			console.log('>_ Refresh! Started..')
-			run()
-		}, 600000) //10 минут = 600000
-	})}
+    async function launchGroup() {
+		try {
+			if (currentNumber >= groupID.length) {
+				console.log('>_ DONE!')
+				if (isReset) {
+					await delay(5000);
+					console.log('>_ Wait 10 minutes before restarting')
+					setTimeout(() => {
+						console.log('>_ Refresh! Started..')
+						run()
+					}, 600000) //10 минут = 600000
+                }
+				return;
+			}
+			
+			await delay(delayTimer);
 
-	launchGroup()
+            const currentID = groupID[currentNumber];
+            const currentName = groupName[currentNumber];
+
+            await api({
+                owner_id: groupId,
+                message: currentText,
+                attachments: attach
+            });
+
+			console.log(`>_ Опубликовано в сообществе «${currentName}» (vk.com/public${currentID})`.replace("-", ""));
+
+            currentNumber++;
+
+            launchGroup();
+
+        } catch (error) {
+            console.error('>_ Publication error: ', error);
+            await delay(5000);
+            run();
+        }
+    }
+
+    launchGroup();
 	console.log(api);
 }
 

@@ -1,4 +1,4 @@
-/* by Sergey Ushakov 2024 | https://github.com/smdkx */
+/* by Sergey Ushakov 2025 | https://github.com/smdkx */
 
 //Подключение модулей и библиотек
 require('dotenv').config()
@@ -199,7 +199,11 @@ const currentText = [
 	'Ярик стал фембойчиком (квадробером)',
 	'Телемагазин, телемагазин..',
 	'P(R)ain World',
-	'Дай мне свой дискордик, я хочу тебе помурчать'
+	'Дай мне свой дискордик, я хочу тебе помурчать',
+	'Взял ипотеку на RTX 5090',
+	'Смартфон Vivo',
+	'Секретный ингредиент крабсбургера',
+	'Чилловый парень на чиле'
 ];
 
 const generateText = currentText[Math.floor(Math.random() * currentText.length)];
@@ -283,16 +287,16 @@ const generateSmiles = currentSmiles[Math.floor(Math.random() * currentSmiles.le
 
 //Счетчик до определенной даты
 const currentDate = new Date().getFullYear();
-const yearDate = new Date(`23 February ${currentDate} 00:00:00`); //currentDate + 1
+const yearDate = new Date(`9 May ${currentDate} 00:00:00`); //currentDate + 1
 const todayDate = Date.now();
 const difference = yearDate - todayDate;
 const daysLeft = Math.floor(difference / (1000 * 60 * 60 * 24));
 
 //Название праздника
-const currentHoliday = "Дня защитника Отечества"
+const currentHoliday = "Дня Победы"
 
 //Эмодзи
-const currentEmoji = "&#129686;" //Каска
+const currentEmoji = "🎗️" //Ленточка
 
 //Генератор чисел
 function generateValue(min = 10, max = 999) {
@@ -303,22 +307,31 @@ async function run() {
 
 	const api = vk.api.wall.post
 	const currentNumber = generateValue()
+	const isSpecialNumber = [666, 777, 69, 228].includes(currentNumber);
 
-	if(currentNumber === 666 || currentNumber === 777 || currentNumber === 69 || currentNumber === 228) {
-		await api({
-			owner_id: process.env.GROUP_ID, //основная группа
+	try {
+		if(isSpecialNumber) {
+			await api({
+				owner_id: process.env.GROUP_ID, //основная группа
+				from_group: 1, //публикация от имени сообщества
+				message: generateSmiles + generateStatus + '\n\nЗапомните этот легендарный день! Все дедлайны выполнены и наконец выпал редчайший бочонок #' + currentNumber + ' (невозможная редкость Immortal Arcana)' + '\n\n«' + generateText + '»'
+			});
+		}
+
+		else await api({
+			owner_id: process.env.GROUP_ID, //основная группа, тест группа -202784674
 			from_group: 1, //публикация от имени сообщества
-			message: generateSmiles + generateStatus + '\n\nЗапомните этот легендарный день! Все дедлайны выполнены и наконец выпал редчайший бочонок #' + currentNumber + ' (невозможная редкость Immortal Arcana)' + '\n\n«' + generateText + '»'
+			message: generateSmiles + generateStatus + '\n\nПродолжаем надеяться на лучшее (скоро дедлайн)\nДо '+ currentHoliday +' осталось ' + daysLeft + ' дн.! '+ currentEmoji +'\nСегодня выпал бочонок #' + currentNumber + '\n\n«' + generateText + '»'
 		});
-	}
 
-	else await api({
-		owner_id: process.env.GROUP_ID, //основная группа, тест группа -202784674
-		from_group: 1, //публикация от имени сообщества
-		message: generateSmiles + generateStatus + '\n\nПродолжаем надеяться на лучшее (скоро дедлайн)\nДо '+ currentHoliday +' осталось ' + daysLeft + ' дн.! '+ currentEmoji +'\nСегодня выпал бочонок #' + currentNumber + '\n\n«' + generateText + '»'
-	});
+	} catch (error) {
+        console.error('>_ Publication error: ', error);
+        throw error;
+    }
 
 	console.log(api);
+
+	console.log('>_ Post successfully published!');
 }
 
 run().catch(console.log);
