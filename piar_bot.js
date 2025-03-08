@@ -57,7 +57,7 @@ async function run() {
             const currentName = groupName[currentNumber];
 
             await api({
-                owner_id: groupId,
+                owner_id: currentID,
                 message: currentText,
                 attachments: attach
             });
