@@ -307,10 +307,10 @@ async function run() {
 
 	const api = vk.api.wall.post
 	const currentNumber = generateValue()
-	const isSpecialNumber = [666, 777, 69, 228].includes(currentNumber);
+	const specialNumber = [666, 777, 69, 228].includes(currentNumber);
 
 	try {
-		if(isSpecialNumber) {
+		if(specialNumber) {
 			await api({
 				owner_id: process.env.GROUP_ID, //основная группа
 				from_group: 1, //публикация от имени сообщества
