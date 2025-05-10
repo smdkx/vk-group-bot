@@ -3,84 +3,82 @@
 //Подключение модулей и библиотек
 require('dotenv').config()
 const { VK } = require('vk-io')
+const {
+	DELAY_BETWEEN_POSTS,
+	RESTART_DELAY,
+	ERROR_RETRY_DELAY
+} = require('./config');
+
+// Проверка переменных окружения
+const requiredEnv = ['TOKEN_USER'];
+for (const env of requiredEnv) {
+	if (!process.env[env]) {
+		console.error(`Ошибка: отсутствует переменная окружения ${env}`);
+		process.exit(1);
+	}
+}
 
 //Токен пользователя
 const vk = new VK({
 	token: process.env.TOKEN_USER
 });
 
-const currentText = [
-	'TEXT'
+const postData = {
+    message: [
+        'Text'
+    ],
+    attachments: ['photoXXX_XXX']
+};
+
+const groupsData = [
+    { id: '-1', name: 'Test' }
 ];
 
-const attach = [
-	'photoXXX_XXX'
-]
+// Утилита для создания задержки
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const groupID = [
-	'-XXXX'
-]
+// Основная функция для публикации постов
+async function createPost() {
+    let currentIndex = 0;
 
-const groupName = [
-	'NAME'
-]
-
-const delay = (time) => {
-	return new Promise((resolve, reject) => setTimeout(resolve, time))
-}
-
-async function run() {
-
-    const api = vk.api.wall.post;
-    const delayTimer = 25000; //25 секунд
-    let currentNumber = 0;
-	let isReset = false; //restart
-
-    async function launchGroup() {
-		try {
-			if (currentNumber >= groupID.length) {
-				console.log('>_ DONE!')
-				if (isReset) {
-					await delay(5000);
-					console.log('>_ Wait 10 minutes before restarting')
-					setTimeout(() => {
-						console.log('>_ Refresh! Started..')
-						run()
-					}, 600000) //10 минут = 600000
-                }
-				return;
-			}
-			
-			await delay(delayTimer);
-
-            const currentID = groupID[currentNumber];
-            const currentName = groupName[currentNumber];
-
-            await api({
-                owner_id: currentID,
-                message: currentText,
-                attachments: attach
+    while (currentIndex < groupsData.length) {
+        const group = groupsData[currentIndex];
+        try {
+            // Публикация поста
+            await vk.api.wall.post({
+                owner_id: group.id,
+                message: postData.message[0],
+                attachments: postData.attachments
             });
 
-			console.log(`>_ Опубликовано в сообществе «${currentName}» (vk.com/public${currentID})`.replace("-", ""));
-
-            currentNumber++;
-
-            launchGroup();
+            console.log(`>_ Опубликовано в сообществе «${group.name}» (vk.com/public${group.id.replace('-', '')})`);
+            currentIndex++;
+            await delay(DELAY_BETWEEN_POSTS);
 
         } catch (error) {
-            console.error('>_ Publication error: ', error);
-            await delay(5000);
-            run();
+            console.error(`>_ Ошибка публикации в «${group.name}»:`, error.message);
+            await delay(ERROR_RETRY_DELAY);
+            continue; // Пропускаем ошибку и продолжаем с текущей группой
         }
     }
 
-    launchGroup();
-	console.log(api);
+    console.log('>_ Все посты опубликованы!');
+    console.log('>_ Ожидание 10 минут перед перезапуском...');
+    await delay(RESTART_DELAY);
+    console.log('>_ Перезапуск публикации...');
+    createPost();
+}
+
+// Запуск скрипта
+async function run() {
+    try {
+        console.log('>_ Started! Script: ' + process.env.VERSION_BOT + ' | API: ' + process.env.VERSION_API);
+        await createPost();
+    } catch (error) {
+        console.error('>_ Critical Error:', error);
+        await delay(ERROR_RETRY_DELAY);
+        run();
+    }
 }
 
 run().catch(console.log);
-
-//Logi
-console.log('>_ Started! Script: ' + process.env.VERSION_BOT + ' | API: ' + process.env.VERSION_API);
-vk.updates.start().catch(console.error);
